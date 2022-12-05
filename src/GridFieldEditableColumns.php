@@ -61,7 +61,7 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
         if (!$this->displayFields) {
             // If setDisplayFields() not used, utilize $summary_fields
             // in a way similar to base class
-            $colRelation = explode('.', $col);
+            $colRelation = explode('.', $col ?? '');
             $value = $grid->getDataFieldValue($record, $colRelation[0]);
             $field = $fields->fieldByName($colRelation[0]);
             if (!$field || $field->isReadonly() || $field->isDisabled()) {
@@ -82,8 +82,8 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
 
             // Fall back to previous logic
             if (!$field) {
-                $rel = (strpos($col, '.') === false); // field references a relation value
-                $field = ($rel) ? clone $fields->fieldByName($col) : new ReadonlyField($col);
+                $rel = (strpos($col ?? '', '.') === false); // field references a relation value
+                $field = ($rel) ? clone $fields->fieldByName($col) : ReadonlyField::create($col);
             }
 
             if (!$field) {
@@ -91,7 +91,7 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
             }
         }
 
-        if (array_key_exists($col, $this->fieldCasting)) {
+        if (array_key_exists($col, $this->fieldCasting ?? [])) {
             $value = $grid->getCastedValue($value, $this->fieldCasting[$col]);
         }
 
@@ -132,6 +132,9 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
 
         // Fetch the items before processing them
         $ids = array_keys($value[self::POST_KEY]);
+        if (empty($ids)) {
+            return;
+        }
         $itemsCollection = ArrayList::create($list->filter('ID', $ids)->toArray());
 
         foreach ($value[self::POST_KEY] as $id => $fields) {
@@ -140,14 +143,10 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
             }
 
             // Find the item from the fetched collection of items
-            $item = $itemsCollection->filter('ID', $id)->first();
+            $item = $itemsCollection->find('ID', $id);
 
-            // Skip items that does not have any changed fields
-            if (!$this->isChanged($item, $fields)) {
-                continue;
-            }
-
-            if (!$item || !$item->canEdit()) {
+            // Skip not found item, or don't have any changed fields, or current user can't edit
+            if (!$item || !$this->isChanged($item, $fields) || !$item->canEdit()) {
                 continue;
             }
 
@@ -167,7 +166,7 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
             }
 
             if ($list instanceof ManyManyList) {
-                $extra = array_intersect_key($form->getData(), (array) $list->getExtraFields());
+                $extra = array_intersect_key($form->getData() ?? [], (array) $list->getExtraFields());
             }
 
             $item->write(false, false, false, true);
@@ -221,7 +220,7 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
     public function getFields(GridField $grid, DataObjectInterface $record)
     {
         $cols   = $this->getDisplayFields($grid);
-        $fields = new FieldList();
+        $fields = FieldList::create();
 
         /** @var DataList $list */
         $list   = $grid->getList();
@@ -254,7 +253,7 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
             if (!$field && $list instanceof ManyManyList) {
                 $extra = $list->getExtraFields();
 
-                if ($extra && array_key_exists($col, $extra)) {
+                if ($extra && array_key_exists($col, $extra ?? [])) {
                     $field = Injector::inst()->create($extra[$col], $col)->scaffoldFormField();
                 }
             }
@@ -269,16 +268,16 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
                     // revert to looking good in cases where the field isn't
                     // available or is readonly
                     //
-                    $colRelation = explode('.', $col);
+                    $colRelation = explode('.', $col ?? '');
                     if ($class && $obj = DataObject::singleton($class)->dbObject($colRelation[0])) {
                         $field = $obj->scaffoldFormField();
                     } else {
-                        $field = new ReadonlyField($colRelation[0]);
+                        $field = ReadonlyField::create($colRelation[0]);
                     }
                 } elseif ($class && $obj = DataObject::singleton($class)->dbObject($col)) {
                     $field = $obj->scaffoldFormField();
                 } else {
-                    $field = new ReadonlyField($col);
+                    $field = ReadonlyField::create($col);
                 }
             }
 
@@ -311,7 +310,7 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
     {
         $fields = $this->getFields($grid, $record);
 
-        $form = new Form($grid, null, $fields, new FieldList());
+        $form = Form::create($grid, null, $fields, FieldList::create());
         $form->loadDataFrom($record);
 
         $form->setFormAction(Controller::join_links(
@@ -336,8 +335,6 @@ class GridFieldEditableColumns extends GridFieldDataColumns implements
 
     /**
      * Whether or not an object in the grid field has changed data.
-     *
-     * @return bool
      */
     protected function isChanged(DataObject $item, array $fields)
     {
